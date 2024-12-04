@@ -68,31 +68,173 @@ class Connect4:
         print("\n")
 
 
+
+
+def generate_positional_scores(rows, cols):
+    scores = np.zeros((rows, cols))
+    mid_row, mid_col = rows // 2, cols // 2
+    for row in range(rows):
+        for col in range(cols):
+            scores[row][col] = rows + cols - (abs(row - mid_row) + abs(col - mid_col))
+    return scores
+
+
+def calculate_positional_advantage(board, player):
+    rows,cols=board.shape
+    position_scores=generate_positional_scores(rows,cols)
+    score=0
+
+    for i in range(rows):
+        for j in range(cols):
+            if board[i][j]==player:
+                score+=position_scores[i][j]
+    return score
+
+
+def search_direction(board, length, direction, row, col, player):
+    rows, cols = board.shape
+    change_x, change_y = direction
+    for k in range(length):
+        new_row = row + k * change_x
+        new_col = col + k * change_y
+        if new_row < 0 or new_row >= rows or new_col < 0 or new_col >= cols:
+            return 0
+        if board[new_row][new_col] != player:
+            return 0
+
+    return 1
+def count_connected_N(board, player, length):
+    count = 0
+    directions = {
+        "vertical": (0, 1),
+        "horizontal": (1, 0),
+        "positivediagonal": (1, 1),
+        "negativediagonal": (1, -1)
+    }
+    rows, cols = board.shape
+    
+    for row in range(rows):
+        for col in range(cols):
+            for direction in directions.values():
+                # Count the fully connected sequences (length 4)
+                if length == 4:
+                    count += search_direction(board, length, direction, row, col, player)
+                # Count the potential sequences (length 2 or 3 with one empty space)
+                elif length == 2 or length == 3:
+                    count += check_potential_sequence(board, player, row, col, length, direction)
+    
+    return count
+
+def check_potential_sequence(board, player, row, col, length, direction):
+    count = 0
+    directions = direction
+    empty_spots = 0
+    
+
+    for sign in [-1, 1]:
+        r, c = row, col
+        sequence = []
+
+
+        for i in range(length + 1): 
+            r, c = r + sign * directions[0], c + sign * directions[1]
+            if 0 <= r < board.shape[0] and 0 <= c < board.shape[1]:
+                if board[r][c] == player:
+                    sequence.append(1) 
+                elif board[r][c] == 0:
+                    sequence.append(0) 
+                    empty_spots += 1 
+                else:
+                    break
+            else:
+                break
+        if len(sequence) == length + 1 and empty_spots == 1:
+            count += 1
+
+    return count
+
+
+def adjust_weights(board):
+    filled_cells = np.count_nonzero(board)
+    total_cells = board.size
+    fill_percentage = filled_cells / total_cells
+
+    if fill_percentage < 0.33:  # Early game
+        return {"fours": 50, "threes": 20, "twos": 10, "position": 30}
+    elif fill_percentage < 0.66:  # Mid-game
+        return {"fours": 100, "threes": 50, "twos": 10, "position": 10}
+    else:  # Late game
+        return {"fours": 1000, "threes": 200, "twos": 0, "position": 5}
+
+
 def eval_state(board):
-    # heuristic function
-    # evaluats the states according to the number of connected fours
-    # TODO:find a better heuristic
-    ai_score = count_connected_fours(board, 2)
-    human_score = count_connected_fours(board, 1)
+    # Heuristic function to evaluate the state of the board
+    
+    # Calculate the AI's connected fours, threes, and twos
+    ai_connected_four = count_connected_N(board, 2, 4)
+    ai_connected_three = count_connected_N(board, 2, 3)
+    ai_connected_two = count_connected_N(board, 2, 2)
+    
+    # Calculate the human's connected fours, threes, and twos
+    human_connected_four = count_connected_N(board, 1, 4)
+    human_connected_three = count_connected_N(board, 1, 3)
+    human_connected_two = count_connected_N(board, 1, 2)
+    
+    # Calculate AI's positional advantage
+    ai_positional_advantage = calculate_positional_advantage(board, 2)
+    
+    # Get the weights based on the board state
+    weights = adjust_weights(board)
+    
+    # Calculate the AI's score
+    ai_score = (
+        weights["fours"] * ai_connected_four +
+        weights["threes"] * ai_connected_three +
+        weights["twos"] * ai_connected_two +
+        weights["position"] * ai_positional_advantage
+    )
+    
+    # Calculate the human's score
+    human_score = (
+        weights["fours"] * human_connected_four +
+        weights["threes"] * human_connected_three +
+        weights["twos"] * human_connected_two +
+        weights["position"] * calculate_positional_advantage(board, 1)  # human has player 1
+    )
+
+    # Return the difference between AI's and human's scores
     return ai_score - human_score
 
 
-def count_connected_fours(board, player):
-    count = 0
-    directions = [(0, 1), (1, 0), (1, 1), (1, -1)]
-    rows, cols = board.shape
 
+def search_direction(board, length, direction, row, col, player):
+    rows, cols = board.shape
+    change_x, change_y = direction
+    for k in range(length):
+        new_row = row + k * change_x
+        new_col = col + k * change_y
+        if new_row < 0 or new_row >= rows or new_col < 0 or new_col >= cols:
+            return 0
+        if board[new_row][new_col] != player:
+            return 0
+
+    return 1
+
+
+def count_connected_N(board, player, length):
+    count=0
+    directions={
+        "vertical":(0,1),
+        "horizontal":(1,0),
+        "positivediagonal":(1,1),
+        "negativediagonal":(-1,-1)
+    }
+    rows, cols = board.shape
     for row in range(rows):
         for col in range(cols):
-            if board[row][col] == player:
-                for dr, dc in directions:
-                    line = []
-                    for i in range(4):
-                        r, c = row + dr * i, col + dc * i
-                        if 0 <= r < rows and 0 <= c < cols:
-                            line.append(board[r][c])
-                    if len(line) == 4 and all(cell == player for cell in line):
-                        count += 1
+           for direction in directions.values():
+            count+=search_direction(board,length,direction,row,col,player)
+
     return count
 
 
@@ -187,7 +329,6 @@ def play_game():
 
         # AI Turn
         print("AI is thinking...")
-
         col = game_algo.decision(game.board,depth=4)
         game.play(col, 2)
         print(f"AI chooses column {col}")
